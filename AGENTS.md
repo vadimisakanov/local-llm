@@ -10,3 +10,4 @@ LLM-maintained docs about this setup live in [ai/docs](ai/docs), following the [
 - When hardware changes: update the relevant wiki pages, cross-links, [ai/docs/index.md](ai/docs/index.md), and append an entry to [ai/docs/log.md](ai/docs/log.md) (`## [YYYY-MM-DD] ingest | <subject>`).
 - New findings from measurements/questions may be filed as new wiki pages; prefer extending existing pages over creating near-duplicates.
 - Periodically lint: fix stale claims, contradictions, orphan pages, and unresolved "open questions".
+- Save all the sessions prompts and summary to ai/sessions/*.md

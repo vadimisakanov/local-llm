@@ -7,6 +7,8 @@ CPU: Xeon E5-1650v2
 RAM: 64GB ECC DDR3, 16GB*4  
 Disk: 256GB NVME SSD, 4TB HDD
 GPU: Nvidia Geforce GT730 4GB VRAM PCIE + Nvidia Tesla V100 32GB VRAM PCIE
+GPU Cooler: ID-COOLING FX240 PRO
+PSU: ZALMAN TeraMax II SE 1000W
 
 2/ Macbook - local LLM notebook
 

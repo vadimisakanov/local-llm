@@ -15,7 +15,7 @@ Make the Tesla V100 32GB usable by enabling 64-bit PCI BAR assignment ("Above 4G
 
 ## Background
 
-- The V100 exposes a ~16 GB BAR1; legacy firmware can only place BARs below 4 GB, so without Above 4G Decoding the card hangs POST or stays invisible. Resizable BAR is **not** needed (and X79 doesn't have it).
+- The V100 exposes a ~16 GB BAR1; legacy firmware can only place BARs below 4 GB, so without Above 4G Decoding the card hangs POST or stays invisible. Resizable BAR **the feature** is not needed (and X79 doesn't have it) — but the [ReBarUEFI](https://github.com/xCuri0/ReBarUEFI) *tool* remains applicable: its UEFIPatch includes a dedicated "X79 Above 4G Decoding fix" plus 64-bit-BAR/MMIO patches (see Execution log, 2026-11-16).
 - "Above 4G Decoding" (a.k.a. "4G Decode" — *decoding*, not encoding) lives in BIOS Setup → Advanced → PCI Subsystem Settings on AMI Aptio firmware. On many Huanan BIOSes it is hidden or absent.
 - The ISA-bridge/PCI-bridge entries from `lspci` are device classes, not chipsets — the platform chipset is fixed (Intel X79 + CPU-integrated PCIe root ports). BIOS selection is by **exact board model/revision**, not by bridge class.
 - Entry point depends on current machine state:
@@ -50,7 +50,7 @@ With Linux installed this costs nothing: add `pci=realloc pci=nocrs` to the kern
 
 1. Power off, **remove the V100** (flash with GT 730 only, in the primary CPU-attached x16 slot).
 2. Select BIOS image, in order of preference:
-   a. Official Huanan download for X79 v2.49/v2.49P (latest dated build);
+   a. Official Huanan download for X79 v2.49/v2.49P (latest dated build) — **exhausted 2026-11-16: installed 04-24-2018 build is already the newest known stock (matches the Q65-variant dump date in the e5450 catalog); no newer official image to get**;
    b. Community BIOS known-good for Tesla P100/V100 on Huanan X79 (r/LocalLLaMA, Level1Techs threads; usually AMIBCP-unlocked with Above-4G forced on).
 3. Validate the image: re-download and compare hashes; confirm it targets X79 v2.49 (not X99/other); read the package README/instructions.
 4. If possible, back up the current firmware with the flasher's save function (AFUWIN "Save" / FPT dump).
@@ -82,7 +82,7 @@ With Linux installed this costs nothing: add `pci=realloc pci=nocrs` to the kern
 
 ### Plan B — no-flash route (zero flash risk, Linux-only)
 
-Keep GT 730 primary; make it permanent in GRUB: append `pci=realloc` (add `pci=nocrs` if BARs still fail to assign) to the kernel cmdline. Verify via Phase 4. **Confirmed available — Linux is installed.** Acceptable steady-state if flashing is deemed too risky.
+Keep GT 730 primary; make it permanent in GRUB: append `pci=realloc` (add `pci=nocrs` if BARs still fail to assign) to the kernel cmdline. Verify via Phase 4. ~~Confirmed available — Linux is installed.~~ **Update 2026-11-15: NOT viable** — the board does not POST with the V100 installed (beeps), so the kernel cmdline never runs. A firmware fix (Phase 2 with a patched/updated image) is mandatory. **Update 2026-11-16 (later): conditionally revived** — the board now POSTs with the V100 installed on the stock BIOS (V100 upper x16, GT 730 lower, CSM enabled + boot filter UEFI-only + Above 4G on). Once GRUB is repaired, test `pci=realloc` before flashing anything — the no-POST premise is gone (attribution CSM vs slot swap unknown). **Update 2026-11-16: revived** — with CSM *enabled* (boot mode: UEFI only), Above 4G on, V100 in upper x16 + GT 730 in lower x16, the stock BIOS **POSTs** and Setup is accessible. If this holds through a Linux boot, `pci=realloc` is testable again — **try it before patching**; if BARs assign, no flash is needed.
 
 ## Failure modes
 
@@ -95,10 +95,20 @@ Keep GT 730 primary; make it permanent in GRUB: append `pci=realloc` (add `pci=n
 
 ## Open questions (record answers during execution)
 
-1. Current BIOS version/date on this board?
-2. Does the official v2.49P BIOS expose Above 4G Decoding?
+1. ~~Current BIOS version/date on this board?~~ **Answered (2026-11-16): 4.6.5 (BIOS Revision 4.6), 2018-04-24, 6 MB ROM, UEFI. Baseboard: HUANANZHI V2.49P (SMBIOS), s/n MB-201804242018 — serial encodes the BIOS date → factory image, never updated.**
+2. Does the official v2.49P BIOS expose Above 4G Decoding? **Answered (2026-11-15): yes, the option exists.** CSM-off boots (GT 730 has UEFI GOP); Above 4G + CSM-off boots with the V100 removed; **with the V100 installed → beep(s), no POST** → the stock large-BAR allocator is broken. Decision gate at Phase 3.1 reached: patched/newer BIOS required.
 3. ~~Which OS is installed on the Powerserver?~~ **Answered: Linux (2026-11-08).**
-4. PSU model/wattage; EPS 8-pin connector available?
+4. PSU model/wattage; EPS 8-pin connector available? **Answered (2026-11-15): ZALMAN TeraMax II SE 1000 W — ample headroom. V100 uses a single 8-pin EPS (CPU-style) connector; use a dedicated EPS cable.**
+
+## Execution log
+
+- **2026-11-15/16 (triage)**: Tests A/B passed (CSM-off boots; Above-4G + CSM-off boots without card). With V100 installed: no POST, beeps. Plan B (`pci=realloc`) ruled out — see Plan B section. Fix ordering refined:
+  1. **Preferred — ReBarUEFI UEFIPatch on this board's own dump**: apply the project's UEFIPatch set (includes "X79 Above 4G Decoding fix", BAR-size-limit removal, 64→32-bit downgrade prevention, Sandy/Ivy MMIO extension). ReBAR feature itself unneeded (Volta has no ReBAR); skip ReBarState/DXE module. Patching our own dump also eliminates the B75/Q65/C204 dump-matching risk.
+  2. **Fallback — newer stock 2.49P dump** (e5450.com): match companion PCH via `lspci -nn | grep -iE 'isa|lpc'` (LPC controller = companion chipset) + build date; 6 MB files → AFUDOS, 8 MB → FPT.
+  - Note: the earlier session's "ISA bridge is not the chipset" answer referred to the CPU-side X79 PCIe root ports; the **LPC ISA bridge is** the companion PCH and is the correct identifier for dump selection.
+   - Wiki status recorded in [powerserver.md](../docs/powerserver.md) "V100 bring-up status".
+- **2026-11-16 (Phase 0 complete)**: BIOS 4.6.5 (rev 4.6), 2018-04-24, 6 MB ROM, UEFI; baseboard HUANANZHI V2.49P (SMBIOS), s/n MB-201804242018 — serial date = BIOS date → factory image, never updated. Consequence: the installed build equals the newest known stock dump (Q65-variant 04-24-2018 per e5450 catalog) → **fallback route 2 (newer stock dump) is a dead end; patching this board's own dump (route 1) is the only firmware fix**. 6 MB ROM → AFUDOS-family flash; confirm the true chip size from the backup dump before patching.
+- **2026-11-16 (later — first POST with V100 installed)**: stock BIOS 4.6.5, **not patched**. With V100 in the upper x16, GT 730 in the lower x16, CSM enabled, boot options UEFI-only, Above 4G Decoding on → **POSTs and enters Setup** (2026-11-15 beep-failures were CSM-off and/or the old slot arrangement; two variables changed, attribution unknown). POST ≠ working — BAR assignment still unverified, and CSM-on can leave Above-4G allocation partially inert. Boot currently blocked at a `grub>` prompt: OS identified as **Proxmox VE** (GRUB 2.06, LVM pve-root/pve-swap; gpt1 = BIOS-boot, gpt2 = ESP). Recover via manual GRUB boot (`set root=(lvm/pve-root)` + `linux`/`initrd`/`boot`), then `update-grub` (+ `grub-install`/`efibootmgr` check). **Order for next session: fix GRUB → verify Phase 4 → try `pci=realloc` (Plan B revived) → only then firmware backup + patch if still broken.**
 
 ## Aftermath — wiki update (per AGENTS.md)
 
