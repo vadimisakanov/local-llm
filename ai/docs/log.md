@@ -49,3 +49,11 @@ Append-only chronological record. Entries start with `## [YYYY-MM-DD] <operation
 - **Current blocker**: boot drops to `grub>` (core.img runs, grub.cfg not found — likely NVRAM/boot-path reset from the BIOS settings change). Recovery recorded in plan/session: manual boot from `(lvm/pve-root)` → `update-grub` → `grub-install`/`efibootmgr` as needed.
 - ReBarUEFI usage re-confirmed against upstream README: UEFIPatch 0.28.0 + repo `patches.txt`; relevant rules = X79 Above-4G fix, <4/<16 GB BAR limit removal, 64→32-bit downgrade prevention, Sandy/Ivy MMIO 16→64 GB (DSDT mod may be needed); skip ReBarDxe/ReBarState; check pad files unchanged.
 - Updated [powerserver.md](powerserver.md) (bring-up table row, update paragraph, OS row, OQ 2), [ai/plan/bios.md](../plan/bios.md) (Plan B revival note, execution-log entry), session log extended.
+
+## [2026-11-21] ingest | GRUB fixed (malformed ESP FAT32); V100 BARs assigned on stock BIOS — no flash needed
+
+- **GRUB boot failure root-caused and fixed**: the ESP (nvme0n1p2, FAT32) was malformed — Linux vfat and the AMI firmware tolerated it, GRUB's strict parser rejected it ("unknown filesystem" from `grub-install`). This also explains the original `grub>` prompt (ESP `grub.cfg` stub unreadable). Fix: backup → `mkfs.vfat -F 32` → `grub-install --target=x86_64-efi` → `/boot/efi` fstab entry added (none existed). Verified UEFI-mode boot; NVRAM entries proxmox/UEFI OS present.
+- **V100 hardware bring-up COMPLETE on stock BIOS 4.6.5** (CSM on + boot UEFI-only + Above 4G on; V100 upper x16, GT 730 lower): `lspci -vv` Region 1 **[size=32G] assigned at a 64-bit address ≥ 0x100000000**, dmesg clean. No `pci=realloc`, no ReBarUEFI flash. `/proc/iomem` unlabeled until driver claims regions (expected).
+- Updated [powerserver.md](powerserver.md): bring-up table success row, Resolution paragraph, BAR1 = 32 GB confirmed, OQ 7 closed (patch route on standby). [ai/plan/bios.md](../plan/bios.md): Status line (bring-up complete), execution-log success entry.
+- Remaining: NVIDIA driver on PVE host (blacklist nouveau, `pve-headers`, `nvidia-driver`), `nvidia-smi` = Tesla V100-PCIE-32GB ~32510 MiB, load/thermal smoke test, then model benchmarks.
+- Session log: [ai/sessions/2026-11-21-grub-fix-v100-bar-assigned.md](../sessions/2026-11-21-grub-fix-v100-bar-assigned.md).
