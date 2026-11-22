@@ -48,7 +48,7 @@ DIY tower server, the high-capacity inference machine of the setup. Built on a C
 - No display outputs, no NVLink (PCIe version only).
 - Still supported by modern CUDA 12.x / llama.cpp (compute 7.0 ≥ minimum), including FlashAttention. Tensor-core (FP16) paths help prompt processing.
 - Supported by vLLM (Volta is the oldest supported architecture), with limitations vs. newer GPUs.
-- Powered by a **single 8-pin EPS (CPU-style) connector**, 250 W max (NVIDIA product brief / TechPowerUp) — use a dedicated EPS cable from the PSU, not a PCIe daisy-chain. Native BAR1 is huge (~16–32 GB) → see [V100 bring-up status](#v100-bring-up-status-2026-11-16).
+- Powered by a **single 8-pin EPS (CPU-style) connector**, 250 W max (NVIDIA product brief / TechPowerUp) — use a dedicated EPS cable from the PSU, not a PCIe daisy-chain. Native BAR1 is **32 GB — confirmed assigned above 4 GB on the stock BIOS** (`lspci -vv`, 2026-11-21; see [V100 bring-up status](#v100-bring-up-status-2026-11-16)).
 
 ### GPU cooling — ID-COOLING FX240 PRO (240 mm AIO)
 - Added 2026-11-15 (README update): 240 mm AIO fitted to the V100, replacing reliance on directed chassis airflow for the GPU die.
@@ -68,10 +68,13 @@ Making the V100's ~16–32 GB BAR1 assignable above 4 GB ("Above 4G Decoding"). 
 | CSM off + Above 4G on, V100 removed | ✅ boots — the option exists and the board trains normally |
 | CSM off + Above 4G on, V100 installed | ❌ beeps at POST, no boot — firmware fails to allocate the 64-bit BAR |
 | CSM **on** + UEFI-only, Above 4G on, V100 upper x16 + GT 730 lower x16 (stock BIOS, not patched) | ✅ **POSTs, enters Setup** (2026-11-16) — first POST with the V100 installed; BAR assignment still unverified |
+| Same config, booted to Proxmox (2026-11-21) | ✅ **BAR1 [size=32G] assigned a 64-bit address above 4 GB, dmesg clean** — no `pci=realloc`, no firmware patch; hardware bring-up complete |
 
 Conclusion: the stock BIOS exposes Above 4G Decoding but its large-BAR allocation is broken (known X79 firmware flaw, confirmed in ReBarUEFI issue tracker). The Linux `pci=realloc` fallback (old Plan B in the plan file) **cannot help** — the board never POSTs with the card installed, so the kernel never runs. A firmware fix is mandatory.
 
 **Update 2026-11-16 (later):** the board **does POST with the V100 installed** on the stock BIOS — V100 in the upper x16, GT 730 in the lower x16, CSM enabled, boot filter UEFI-only, Above 4G on. Two variables changed vs the beep tests (CSM off→on, slot swap), so attribution is unknown — needs a controlled retest. The no-POST kill of `pci=realloc` is therefore **retracted pending verification**; CSM-on can also leave Above-4G allocation partially inert, so CSM-off remains the target end state. Current blocker: boot drops to a `grub>` prompt (Proxmox, GRUB 2.06) after the BIOS settings change — manual boot from `(lvm/pve-root)`, then `update-grub` (+ `grub-install`/`efibootmgr` if the NVRAM entry is gone).
+
+**Resolution (2026-11-21):** boot fixed, then **the BAR assigns correctly on the stock BIOS — no flash, no `pci=realloc`**. GRUB root cause: the ESP's FAT32 was malformed — Linux vfat and the AMI firmware read it, but GRUB's strict parser rejected it (hence the original `grub>`: the ESP's `grub.cfg` stub was unreadable, and `grub-install` failed with "unknown filesystem"). Fix: backup → reformat nvme0n1p2 as clean FAT32 → `grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=proxmox` → add the missing `/boot/efi` fstab entry. With CSM on + Above 4G on, `lspci -vv` shows the V100's Region 1 **[size=32G] at a 64-bit address ≥ 0x100000000** and dmesg is clean. `/proc/iomem | grep nvidia` is empty only because no driver has claimed the regions yet. Remaining: NVIDIA driver on the PVE host, `nvidia-smi`, load/thermal smoke test.
 
 Fix paths, preferred first:
 
@@ -100,7 +103,7 @@ Fix paths, preferred first:
 4. Measured tokens/s for a target model (e.g. Qwen/Llama 14B Q6) at realistic context lengths?
 5. PSU known (TeraMax II SE 1000 W, ample); measured wall draw under full inference load still pending.
 6. Which companion PCH does this board use — B75, Q65, or C204? Hint: our 04-24-2018 BIOS date matches the Q65-variant stock build. Near-moot now — only relevant to the stock-dump fallback, which offers no newer build than the installed one.
-7. ~~Current BIOS version/date~~ Recorded 2026-11-16: 4.6.5, 2018-04-24, 6 MB, UEFI. **Firmware backup dump still pending** (AFUDOS save / FPT / CH341A) — required substrate for the ReBarUEFI patch.
+7. ~~Current BIOS version/date~~ Recorded 2026-11-16: 4.6.5, 2018-04-24, 6 MB, UEFI. Backup dump no longer required — the stock BIOS assigns the V100's BAR correctly; ReBarUEFI patch route stays on standby only if the config regresses.
 
 ---
 *LLM-maintained wiki — see [index](index.md) and [log](log.md).*
