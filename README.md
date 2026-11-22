@@ -1,3 +1,7 @@
+Setup to run Local LLMs for programming, creating program tests, running test suites, creating documentation
+
+Side tasks: process images and video, run an agent that would help with day-to-day tasks like document sorting, emails and calendars
+
 Current hardware:
 
 1/ Powerserver - Local LLM server
